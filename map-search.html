@@ -4,58 +4,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Postcode Search Demo</title>
-
+<title>UK Postcode Lookup</title>
 <style>
-body{font:16px Arial;padding:20px;max-width:600px;margin:auto}
-input{padding:12px;width:100%;box-sizing:border-box}
-.postcode-suggestion{padding:12px;border:1px solid #ddd;cursor:pointer}
-.postcode-suggestion:hover{background:#eee}
-pre{background:#f2f2f2;padding:12px;overflow:auto}
+body{font:16px Arial;max-width:650px;margin:30px auto;padding:15px;background:#f4f6f8}
+main{background:white;padding:22px;border-radius:12px}
+input,button{padding:12px;font-size:16px}
+input{width:65%;box-sizing:border-box}
+button{cursor:pointer;background:#075eaa;color:white;border:0;border-radius:5px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f3f5;padding:15px;border-radius:6px}
+h2{color:#075eaa}
 </style>
 </head>
 <body>
+<main>
+<h2>UK Postcode Lookup</h2>
+<p>Enter a UK postcode to retrieve geographical information.</p>
 
-<h2>Postcode Search</h2>
+<input id="postcode" placeholder="e.g. S70 1AA">
+<button onclick="lookup()">Search</button>
 
-<input id="postcode" placeholder="Enter postcode...">
-<div id="suggestions"></div>
+<pre id="result">Enter a postcode to begin.</pre>
 
-<h3>Postcode information</h3>
-<pre id="result">Waiting for postcode...</pre>
+<script>
+async function lookup(){
+ const p=document.getElementById('postcode').value.trim();
+ const out=document.getElementById('result');
 
-<script type="module">
-import {
-  bindAutocomplete,
-  lookup,
-  nearest
-} from "./postcode.js";
+ if(!p){out.textContent='Please enter a postcode.';return;}
 
-const input = document.getElementById("postcode");
-const suggestions = document.getElementById("suggestions");
-const output = document.getElementById("result");
+ out.textContent='Searching...';
 
-// Attach reusable autocomplete
-const postcodeSearch = bindAutocomplete(input, {
-  suggestions,
+ try{
+  const r=await fetch(
+   'https://api.postcodes.io/postcodes/'+encodeURIComponent(p)
+  );
+  const j=await r.json();
 
-  onSelect: postcode => {
-    output.textContent = JSON.stringify(postcode, null, 2);
-  },
+  if(!j.result){out.textContent='Postcode not found.';return;}
 
-  onError: error => {
-    output.textContent = error.message;
-  }
-});
+  const d=j.result;
 
-// Example: call any module function directly
-// const data = await lookup("S70 1AA");
-// const nearby = await nearest("S70 1AA");
+  out.textContent=`
+POSTCODE: ${d.postcode}
 
-// Disconnect when no longer needed
-// postcodeSearch.destroy();
+GEOGRAPHY
+Latitude: ${d.latitude}
+Longitude: ${d.longitude}
+Easting: ${d.easting}
+Northing: ${d.northing}
+
+ADMINISTRATIVE
+Parish: ${d.parish}
+Ward: ${d.admin_ward}
+District: ${d.admin_district}
+County: ${d.admin_county}
+Region: ${d.region}
+
+COUNTRY: ${d.country}
+NHS REGION: ${d.nhs_ha}
+`;
+ }catch(e){
+  out.textContent='Error connecting to Postcodes.io';
+ }
+}
 </script>
-
+</main>
 </body>
 </html>
-
