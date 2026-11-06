@@ -4,39 +4,218 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>UK Postcode Search</title>
+<title>UK Postcode Map</title>
+
+<link rel="stylesheet"
+ href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <style>
-body{font:16px Arial;background:#f4f6f8;padding:20px}
-main{max-width:600px;margin:auto;background:white;padding:20px;border-radius:10px}
-input{width:100%;padding:13px;box-sizing:border-box;font-size:16px}
-#suggestions{border:1px solid #ddd}
-.item{padding:12px;cursor:pointer;border-bottom:1px solid #eee}
+*{box-sizing:border-box}
+body{font:15px Arial;background:#f3f5f7;margin:0;padding:15px}
+main{max-width:900px;margin:auto;background:white;padding:18px;border-radius:12px}
+h2{color:#075eaa}
+.search{display:flex;gap:7px}
+input{padding:12px;flex:1;min-width:0;font-size:16px}
+button{padding:11px;background:#075eaa;color:white;border:0;border-radius:5px;cursor:pointer}
+#suggestions{position:relative;z-index:1000}
+.item{padding:11px;background:white;border:1px solid #ddd;cursor:pointer}
 .item:hover{background:#eaf3ff}
-pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f3f5;padding:15px}
+#map{height:400px;margin-top:15px;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:15px}
+.data{background:#f1f4f7;padding:12px;border-radius:6px}
+.data strong{display:block;color:#075eaa;margin-bottom:6px}
+pre{background:#f1f4f7;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto}
+.small{font-size:12px;color:#666}
+@media(max-width:500px){
+ .grid{grid-template-columns:1fr}
+ #map{height:350px}
+}
 </style>
 </head>
+
 <body>
 <main>
-<h2>UK Postcode Search</h2>
+<h2>UK Postcode-to-Map</h2>
+<p>Search a UK postcode or click the map to obtain coordinates.</p>
 
-<input id="postcode" placeholder="Start typing a postcode...">
+<div class="search">
+<input id="postcode" placeholder="e.g. S70 1AA" autocomplete="off">
+<button onclick="searchPostcode()">Search</button>
+</div>
+
 <div id="suggestions"></div>
+<p id="status" class="small">Ready to search.</p>
 
-<pre id="result">Postcode information will appear here.</pre>
+<div id="map"></div>
+
+<div class="grid">
+ <div class="data">
+  <strong>Postcode</strong>
+  <span id="pc">—</span>
+ </div>
+ <div class="data">
+  <strong>Latitude / Longitude</strong>
+  <span id="wgs">—</span>
+ </div>
+ <div class="data">
+  <strong>British National Grid</strong>
+  <span id="bng">—</span>
+ </div>
+ <div class="data">
+  <strong>Administrative District</strong>
+  <span id="district">—</span>
+ </div>
+ <div class="data">
+  <strong>Ward</strong>
+  <span id="ward">—</span>
+ </div>
+ <div class="data">
+  <strong>Region / Country</strong>
+  <span id="region">—</span>
+ </div>
+</div>
+
+<p>
+<button onclick="copyCoordinates()">Copy coordinates</button>
+<button onclick="nearest()">Nearest postcodes</button>
+</p>
+
+<h3>API JSON response</h3>
+<pre id="json">No data yet.</pre>
+
+<p class="small">
+Map: OpenStreetMap | Postcode data: Postcodes.io |
+Coordinate conversion: Proj4js
+</p>
 </main>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+
 <script>
-const input=document.getElementById('postcode');
-const suggestions=document.getElementById('suggestions');
-const result=document.getElementById('result');
+// British National Grid definition
+proj4.defs("EPSG:27700",
+ "+proj=tmerc +lat_0=49 +lon_0=-2 "+
+ "+k=0.9996012717 +x_0=400000 +y_0=-100000 "+
+ "+ellps=airy +datum=OSGB36 +units=m +no_defs");
 
-let timer;
+// Initialise map
+const map=L.map('map').setView([54.5,-3],6);
 
-input.addEventListener('input',()=>{
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+ attribution:'© OpenStreetMap contributors',
+ maxZoom:19
+}).addTo(map);
+
+let marker=null;
+let currentData=null;
+let timer=null;
+
+const $=id=>document.getElementById(id);
+
+// Convert WGS84 to British National Grid
+function convert(lat,lon){
+ return proj4("EPSG:4326","EPSG:27700",[lon,lat]);
+}
+
+// Display coordinates
+function display(lat,lon,e,n){
+ $('wgs').textContent=lat.toFixed(6)+', '+lon.toFixed(6);
+ $('bng').textContent=
+  'E '+Math.round(e)+' / N '+Math.round(n);
+}
+
+// Position marker and update coordinates
+function updateMap(lat,lon,zoom=16){
+ if(!Number.isFinite(lat)||!Number.isFinite(lon)||
+    lat < 49 || lat > 61 || lon < -9 || lon > 3){
+  $('status').textContent='Location outside supported UK map area.';
+  return;
+ }
+
+ if(marker){
+  marker.setLatLng([lat,lon]);
+ }else{
+  marker=L.marker([lat,lon],{draggable:true}).addTo(map);
+  marker.on('dragend',()=>{
+   const p=marker.getLatLng();
+   updateCoordinates(p.lat,p.lng);
+  });
+ }
+
+ map.setView([lat,lon],zoom);
+ updateCoordinates(lat,lon);
+}
+
+function updateCoordinates(lat,lon){
+ const [e,n]=convert(lat,lon);
+ display(lat,lon,e,n);
+ $('status').textContent='Map coordinates updated.';
+}
+
+// Map click: convert clicked location to BNG
+map.on('click',e=>{
+ if(!marker){
+  marker=L.marker(e.latlng,{draggable:true}).addTo(map);
+  marker.on('dragend',()=>{
+   const p=marker.getLatLng();
+   updateCoordinates(p.lat,p.lng);
+  });
+ }else{
+  marker.setLatLng(e.latlng);
+ }
+ $('pc').textContent='Map location (no postcode lookup)';
+ $('district').textContent='—';
+ $('ward').textContent='—';
+ $('region').textContent='—';
+ currentData=null;
+ updateCoordinates(e.latlng.lat,e.latlng.lng);
+});
+
+// Retrieve postcode information
+async function searchPostcode(p=$('postcode').value.trim()){
+ if(!p)return;
+
+ $('status').textContent='Searching postcode...';
+ $('suggestions').innerHTML='';
+
+ try{
+  const r=await fetch(
+   'https://api.postcodes.io/postcodes/'+encodeURIComponent(p)
+  );
+  const j=await r.json();
+
+  if(!j.result){
+   $('status').textContent='Postcode not found.';
+   return;
+  }
+
+  const d=j.result;
+  currentData=d;
+
+  $('postcode').value=d.postcode;
+  $('pc').textContent=d.postcode;
+  $('district').textContent=d.admin_district||'—';
+  $('ward').textContent=d.admin_ward||'—';
+  $('region').textContent=
+   (d.region||'—')+' / '+(d.country||'—');
+
+  $('json').textContent=JSON.stringify(d,null,2);
+
+  updateMap(d.latitude,d.longitude);
+  $('status').textContent='Postcode successfully located.';
+
+ }catch(e){
+  $('status').textContent='API connection error.';
+ }
+}
+
+// Autocomplete
+$('postcode').addEventListener('input',()=>{
  clearTimeout(timer);
- const q=input.value.trim();
+ const q=$('postcode').value.trim();
+ $('suggestions').innerHTML='';
 
- suggestions.innerHTML='';
  if(q.length<2)return;
 
  timer=setTimeout(async()=>{
@@ -47,59 +226,51 @@ input.addEventListener('input',()=>{
    );
    const j=await r.json();
 
-   suggestions.innerHTML='';
+   if($('postcode').value.trim()!==q)return;
+
    (j.result||[]).forEach(p=>{
-    const div=document.createElement('div');
-    div.className='item';
-    div.textContent=p;
-    div.onclick=()=>selectPostcode(p);
-    suggestions.appendChild(div);
+    const item=document.createElement('div');
+    item.className='item';
+    item.textContent=p;
+    item.onclick=()=>searchPostcode(p);
+    $('suggestions').appendChild(item);
    });
   }catch(e){
-   suggestions.textContent='Unable to load suggestions.';
+   $('status').textContent='Autocomplete unavailable.';
   }
  },300);
 });
 
-async function selectPostcode(p){
- input.value=p;
- suggestions.innerHTML='';
- result.textContent='Loading...';
+// Search using Enter
+$('postcode').addEventListener('keydown',e=>{
+ if(e.key==='Enter')searchPostcode();
+});
+
+// Copy coordinates
+function copyCoordinates(){
+ const text=$('wgs').textContent+'\n'+$('bng').textContent;
+ navigator.clipboard.writeText(text)
+  .then(()=>$('status').textContent='Coordinates copied.')
+  .catch(()=>$('status').textContent='Clipboard unavailable.');
+}
+
+// Find nearest postcodes
+async function nearest(){
+ if(!currentData){
+  $('status').textContent='Search a postcode first.';
+  return;
+ }
 
  try{
+  const p=encodeURIComponent(currentData.postcode);
   const r=await fetch(
-   'https://api.postcodes.io/postcodes/'+
-   encodeURIComponent(p)
+   'https://api.postcodes.io/postcodes/'+p+'/nearest?limit=10'
   );
   const j=await r.json();
-
-  if(!j.result){
-   result.textContent='Postcode not found.';
-   return;
-  }
-
-  const d=j.result;
-
-  result.textContent=`
-POSTCODE: ${d.postcode}
-
-GEOGRAPHY
-Latitude: ${d.latitude}
-Longitude: ${d.longitude}
-Easting: ${d.easting}
-Northing: ${d.northing}
-
-ADMINISTRATIVE
-Parish: ${d.parish}
-Ward: ${d.admin_ward}
-District: ${d.admin_district}
-County: ${d.admin_county}
-Region: ${d.region}
-
-COUNTRY: ${d.country}
-`;
+  $('json').textContent=JSON.stringify(j.result,null,2);
+  $('status').textContent='Nearest postcodes retrieved.';
  }catch(e){
-  result.textContent='API connection error.';
+  $('status').textContent='Nearest postcode request failed.';
  }
 }
 </script>
