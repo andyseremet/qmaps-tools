@@ -1,1 +1,61 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Postcode Search Demo</title>
+
+<style>
+body{font:16px Arial;padding:20px;max-width:600px;margin:auto}
+input{padding:12px;width:100%;box-sizing:border-box}
+.postcode-suggestion{padding:12px;border:1px solid #ddd;cursor:pointer}
+.postcode-suggestion:hover{background:#eee}
+pre{background:#f2f2f2;padding:12px;overflow:auto}
+</style>
+</head>
+<body>
+
+<h2>Postcode Search</h2>
+
+<input id="postcode" placeholder="Enter postcode...">
+<div id="suggestions"></div>
+
+<h3>Postcode information</h3>
+<pre id="result">Waiting for postcode...</pre>
+
+<script type="module">
+import {
+  bindAutocomplete,
+  lookup,
+  nearest
+} from "./postcode.js";
+
+const input = document.getElementById("postcode");
+const suggestions = document.getElementById("suggestions");
+const output = document.getElementById("result");
+
+// Attach reusable autocomplete
+const postcodeSearch = bindAutocomplete(input, {
+  suggestions,
+
+  onSelect: postcode => {
+    output.textContent = JSON.stringify(postcode, null, 2);
+  },
+
+  onError: error => {
+    output.textContent = error.message;
+  }
+});
+
+// Example: call any module function directly
+// const data = await lookup("S70 1AA");
+// const nearby = await nearest("S70 1AA");
+
+// Disconnect when no longer needed
+// postcodeSearch.destroy();
+</script>
+
+</body>
+</html>
+
